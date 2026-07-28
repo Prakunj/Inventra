@@ -31,13 +31,10 @@ class InventoryService:
     def get_product(sku: str):
         """
         Fetch a single product by SKU.
-
-        Args:
-            sku (str): Product SKU.
-
-        Returns:
-            dict | None
+        Normalises input: 'SKU-001', 'sku-001', 'SKU001' → 'SKU001'
         """
+        sku = sku.upper().replace("-", "").strip()
+
         conn = get_connection()
         cursor = conn.cursor()
 

@@ -3,8 +3,9 @@ from langchain_google_genai import ChatGoogleGenerativeAI
 
 from graph.state import AgentState
 from prompts.data_prompt import DATA_PROMPT, QueryExtraction
-from mcp_server.client import call_tool
-
+from services.inventory_service import InventoryService
+from services.vendor_service import VendorService
+from services.weather_service import WeatherService
 
 
 llm = ChatGoogleGenerativeAI(
@@ -26,16 +27,14 @@ def data_agent(state: AgentState):
     intent = extraction.intent
     entity = extraction.entity
 
-
     print("=" * 50)
     print("Intent:", intent)
     print("Entity:", entity)
     print("=" * 50)
 
-
     inventory = None
-    vendor = None
-    weather = None
+    vendor    = None
+    weather   = None
 
     # -----------------------------
     # REORDER
@@ -44,113 +43,53 @@ def data_agent(state: AgentState):
     if intent == "reorder":
 
         if entity.upper().startswith("SKU"):
-
-            inventory = call_tool(
-                "get_product",
-                {"sku": entity},
-            )
-
+            inventory = InventoryService.get_product(entity)
         else:
+            inventory = InventoryService.get_inventory_by_name(entity)
 
-            inventory = call_tool(
-                "get_inventory_by_name",
-                {"name": entity},
+        if inventory is None:
+            raise ValueError(
+                f"Product not found: '{entity}'. "
+                "Please check the SKU or product name and try again."
             )
 
-        inventory = inventory
-
-        vendor = call_tool(
-            "get_vendor",
-            {
-                "vendor_id": inventory["vendor_id"]
-            },
-        )
-
-        weather = call_tool(
-            "get_weather",
-            {
-                "region": inventory["region"]
-            },
-        )
-
-        vendor = vendor
-        weather = weather
+        vendor  = VendorService.get_vendor(inventory["vendor_id"])
+        weather = WeatherService.get_weather(inventory["region"])
 
     # -----------------------------
     # LOW STOCK
     # -----------------------------
 
     elif intent == "low_stock":
-
-        inventory = call_tool(
-            "get_low_stock_products",
-            {},
-        )
-
-        inventory = inventory
+        inventory = InventoryService.get_low_stock_products()
 
     # -----------------------------
     # INVENTORY LOOKUP
     # -----------------------------
 
     elif intent == "inventory_lookup":
-
-        inventory = call_tool(
-            "search_inventory",
-            {
-                "keyword": entity
-            },
-        )
-
-        inventory = inventory
+        inventory = InventoryService.search_inventory(entity)
 
     # -----------------------------
     # CATEGORY LOOKUP
     # -----------------------------
 
     elif intent == "category_lookup":
-
-        inventory = call_tool(
-            "get_inventory_by_category",
-            {
-                "category": entity
-            },
-        )
-
-        inventory = inventory
+        inventory = InventoryService.get_inventory_by_category(entity)
 
     # -----------------------------
-    # WEATHER
+    # WEATHER + REGION
     # -----------------------------
 
     elif intent == "weather_inventory":
-
-        weather = call_tool(
-            "get_weather",
-            {
-                "region": 'North'
-            },
-        )
-
-        inventory = call_tool(
-            "get_inventory_by_region",
-            {"region": 'North'},
-        )
-
-        weather = weather
-        inventory = inventory
+        weather   = WeatherService.get_weather("North")
+        inventory = InventoryService.get_inventory_by_region("North")
 
     return {
-
         **state,
-
-        "intent": intent,
-
-        "entity": entity,
-
+        "intent":         intent,
+        "entity":         entity,
         "inventory_data": inventory,
-
-        "vendor_data": vendor,
-
-        "weather_data": weather,
+        "vendor_data":    vendor,
+        "weather_data":   weather,
     }

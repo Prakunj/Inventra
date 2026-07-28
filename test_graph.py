@@ -39,4 +39,4 @@ print(result.get("ticket"))
 
 print("=" * 80)
 print("Report")
-print(result.get("report")[0]["text"])
+print(result.get("report"))

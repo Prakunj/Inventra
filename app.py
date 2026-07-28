@@ -1,7 +1,10 @@
 import streamlit as st
 import time
+import traceback
 import pandas as pd
 from datetime import datetime
+
+from graph.workflow import build_graph
 
 
 # ─────────────────────────────────────────────
@@ -16,6 +19,64 @@ st.set_page_config(
 
 
 # ─────────────────────────────────────────────
+# Compile graph once per server lifecycle
+# ─────────────────────────────────────────────
+@st.cache_resource
+def get_graph():
+    return build_graph()
+
+
+# Agent step labels shown during streaming
+AGENT_STEPS = {
+    "data":     ("📊", "Data Agent",     "Extracting intent & fetching inventory, vendor, weather data"),
+    "decision": ("🧠", "Decision Agent",  "Analysing stock levels, vendor reliability & weather impact"),
+    "ticket":   ("🎫", "Ticket Agent",    "Creating purchase ticket in the system"),
+    "report":   ("📝", "Report Agent",    "Generating final structured report"),
+}
+
+
+def run_graph_with_steps(prompt: str) -> dict:
+    """Stream the graph, rendering each agent step live inside an st.status box."""
+    graph = get_graph()
+    result_state: dict = {}
+
+    with st.status("🤖 Running agents…", expanded=True) as status:
+        try:
+            for event in graph.stream({"user_query": prompt}):
+                for node_name, node_output in event.items():
+                    if node_name in AGENT_STEPS:
+                        icon, label, desc = AGENT_STEPS[node_name]
+                        st.markdown(
+                            f"""
+                            <div style="display:flex;align-items:flex-start;gap:10px;
+                                        padding:0.5rem 0.6rem;border-radius:8px;
+                                        background:#1a2234;border:1px solid #1e2d45;
+                                        margin-bottom:6px;">
+                              <span style="font-size:1rem;">{icon}</span>
+                              <div>
+                                <div style="font-size:0.82rem;font-weight:600;color:#a5b4fc;">
+                                  {label} <span style="color:#86efac;font-size:0.75rem;">✓ done</span>
+                                </div>
+                                <div style="font-size:0.73rem;color:#64748b;margin-top:1px;">{desc}</div>
+                              </div>
+                            </div>
+                            """,
+                            unsafe_allow_html=True,
+                        )
+                    if isinstance(node_output, dict):
+                        result_state.update(node_output)
+
+            status.update(label="✅ All agents completed", state="complete", expanded=False)
+
+        except Exception as e:
+            traceback.print_exc()   # full stack trace → Streamlit server log
+            status.update(label="❌ Agent error", state="error", expanded=True)
+            result_state = {"intent": "error", "report": f"⚠️ {e}"}
+
+    return result_state
+
+
+# ─────────────────────────────────────────────
 # Custom CSS
 # ─────────────────────────────────────────────
 st.markdown("""
@@ -23,9 +84,7 @@ st.markdown("""
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
 
 html, body, [class*="css"] { font-family: 'Inter', sans-serif; }
-
 #MainMenu, footer, header { visibility: hidden; }
-
 .stApp { background: #0f1117; color: #e8eaf0; }
 
 /* ── Sidebar ── */
@@ -39,8 +98,7 @@ html, body, [class*="css"] { font-family: 'Inter', sans-serif; }
 .sb-brand {
     display: flex; align-items: center; gap: 10px;
     padding: 0 1rem 1.2rem 1rem;
-    border-bottom: 1px solid #1e2535;
-    margin-bottom: 1rem;
+    border-bottom: 1px solid #1e2535; margin-bottom: 1rem;
 }
 .sb-brand-icon {
     font-size: 1.4rem;
@@ -60,7 +118,7 @@ html, body, [class*="css"] { font-family: 'Inter', sans-serif; }
     color: white !important; border: none !important;
     border-radius: 10px !important; padding: 0.55rem 1rem !important;
     font-weight: 600 !important; font-size: 0.85rem !important;
-    transition: all 0.2s ease !important; cursor: pointer !important;
+    transition: all 0.2s ease !important;
 }
 .stButton > button:hover {
     opacity: 0.88 !important; transform: translateY(-1px) !important;
@@ -182,35 +240,26 @@ html, body, [class*="css"] { font-family: 'Inter', sans-serif; }
 .example-chip {
     background: #1e2535; border: 1px solid #252d40;
     border-radius: 20px; padding: 0.5rem 1rem;
-    font-size: 0.8rem; color: #94a3b8; cursor: pointer; transition: all 0.2s;
+    font-size: 0.8rem; color: #94a3b8;
 }
 
-/* ── Chat input bar (bottom fixed strip) ── */
-/* Force the entire bottom container to match the dark theme */
+/* ── Chat input bottom bar ── */
 [data-testid="stBottom"] {
     background: #0f1117 !important;
     border-top: 1px solid #1e2535 !important;
 }
-[data-testid="stBottom"] > div {
-    background: #0f1117 !important;
-}
-/* The inner white card Streamlit wraps around the input */
+[data-testid="stBottom"] > div { background: #0f1117 !important; }
 [data-testid="stChatInput"] {
     background: #0f1117 !important;
-    border: none !important;
-    box-shadow: none !important;
+    border: none !important; box-shadow: none !important;
 }
-[data-testid="stChatInput"] > div {
-    background: #0f1117 !important;
-}
+[data-testid="stChatInput"] > div { background: #0f1117 !important; }
 [data-testid="stChatInput"] textarea {
     background: #1e2535 !important;
     border: 1px solid #2d3748 !important;
-    border-radius: 12px !important;
-    color: #e2e8f0 !important;
+    border-radius: 12px !important; color: #e2e8f0 !important;
     font-family: 'Inter', sans-serif !important;
-    font-size: 0.88rem !important;
-    caret-color: #6366f1 !important;
+    font-size: 0.88rem !important; caret-color: #6366f1 !important;
 }
 [data-testid="stChatInput"] textarea:focus {
     border-color: #6366f1 !important;
@@ -218,17 +267,13 @@ html, body, [class*="css"] { font-family: 'Inter', sans-serif; }
 }
 [data-testid="stChatInputSubmitButton"] {
     background: linear-gradient(135deg, #6366f1, #8b5cf6) !important;
-    border-radius: 9px !important;
-    border: none !important;
+    border-radius: 9px !important; border: none !important;
 }
-/* Catch any remaining light wrappers Streamlit may inject */
-.stChatFloatingInputContainer {
-    background: #0f1117 !important;
-    border-top: 1px solid #1e2535 !important;
-}
-.stChatFloatingInputContainer > div {
-    background: #0f1117 !important;
-}
+.stChatFloatingInputContainer { background: #0f1117 !important; border-top: 1px solid #1e2535 !important; }
+.stChatFloatingInputContainer > div { background: #0f1117 !important; }
+
+/* ── Spinner ── */
+[data-testid="stSpinner"] > div { color: #a5b4fc !important; }
 
 /* ── DataFrame ── */
 [data-testid="stDataFrame"] { border-radius: 10px; overflow: hidden; }
@@ -237,6 +282,31 @@ html, body, [class*="css"] { font-family: 'Inter', sans-serif; }
 ::-webkit-scrollbar { width: 4px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: #2d3748; border-radius: 4px; }
+
+/* ── Error / warning ── */
+.stAlert { border-radius: 10px !important; }
+
+/* ── st.status widget ── */
+[data-testid="stStatusWidget"] {
+    background: #161b27 !important;
+    border: 1px solid #1e2d45 !important;
+    border-radius: 12px !important;
+    color: #a5b4fc !important;
+}
+[data-testid="stStatusWidget"] summary {
+    color: #a5b4fc !important;
+    font-size: 0.85rem !important;
+    font-weight: 600 !important;
+}
+[data-testid="stStatusWidget"] details > div {
+    background: #0f1117 !important;
+    border-top: 1px solid #1e2535 !important;
+    padding: 0.75rem !important;
+    border-radius: 0 0 12px 12px !important;
+}
+/* Running spinner icon colour */
+[data-testid="stStatusWidget"] svg { color: #6366f1 !important; }
+
 </style>
 """, unsafe_allow_html=True)
 
@@ -257,8 +327,8 @@ if "active_session" not in st.session_state:
 def create_session(title="New Chat"):
     sid = f"s_{int(time.time() * 1000)}"
     st.session_state.sessions[sid] = {
-        "title": title,
-        "messages": [],
+        "title":      title,
+        "messages":   [],
         "created_at": datetime.now(),
     }
     st.session_state.active_session = sid
@@ -284,131 +354,237 @@ def relative_time(dt):
     return dt.strftime("%b %d")
 
 
-def detect_intent(query: str) -> str:
-    q = query.lower()
-    if any(k in q for k in ["low stock", "low-stock", "below threshold", "running low"]): return "low_stock"
-    if any(k in q for k in ["reorder", "re-order", "purchase", "order"]): return "reorder"
-    if any(k in q for k in ["weather", "temperature", "forecast", "rain", "snow"]): return "weather"
-    if any(k in q for k in ["category", "apparel", "footwear", "accessories"]): return "category_lookup"
-    if any(k in q for k in ["search", "find", "look", "inventory", "sku"]): return "inventory_lookup"
-    return "general"
+def stock_badge(qty, threshold):
+    if qty is None or threshold is None:
+        return "—"
+    if qty <= 0:
+        return "🔴 Out of stock"
+    if qty <= threshold * 0.5:
+        return "🔴 Critical"
+    if qty <= threshold:
+        return "🟡 Low"
+    return "🟢 Healthy"
 
 
 # ─────────────────────────────────────────────
-# Structured result renderers
+# Real result renderer — reads AgentState
 # ─────────────────────────────────────────────
-def render_result(intent: str, query: str):
-    if intent == "low_stock":
-        st.markdown('<div class="result-card"><div class="result-card-header">📉 Low Stock Report</div><div class="result-card-body">', unsafe_allow_html=True)
-        df = pd.DataFrame({
-            "SKU":       ["SKU-001", "SKU-047", "SKU-102", "SKU-215"],
-            "Product":   ["Winter Jacket", "Snow Boots", "Thermal Gloves", "Fleece Hoodie"],
-            "Region":    ["North", "North", "East", "West"],
-            "Qty":       [12, 8, 5, 20],
-            "Threshold": [50, 30, 25, 40],
-            "Status":    ["🔴 Critical", "🔴 Critical", "🔴 Critical", "🟡 Low"],
-        })
-        st.dataframe(df, use_container_width=True, hide_index=True)
-        st.markdown("""
-        <div class="metric-row">
-          <div class="metric-pill"><span class="mp-label">Total Low Stock</span>4 products</div>
-          <div class="metric-pill"><span class="mp-label">Critical</span>3 products</div>
-          <div class="metric-pill"><span class="mp-label">Action</span>Immediate reorder</div>
-        </div>
-        </div></div>""", unsafe_allow_html=True)
+def render_real_result(state: dict):
+    intent   = state.get("intent", "general")
+    inv      = state.get("inventory_data")
+    vendor   = state.get("vendor_data")
+    weather  = state.get("weather_data")
+    decision = state.get("decision")
+    ticket   = state.get("ticket")
+    report   = state.get("report", "")
 
-    elif intent == "reorder":
-        st.markdown("""
+    # ── REORDER ──────────────────────────────
+    if intent == "reorder" and isinstance(inv, dict):
+        qty       = inv.get("qty", "—")
+        threshold = inv.get("reorder_threshold", "—")
+        badge     = stock_badge(inv.get("qty"), inv.get("reorder_threshold"))
+
+        st.markdown(f"""
         <div class="result-card">
-          <div class="result-card-header">🔄 Reorder Analysis — SKU-001 · Winter Jacket</div>
+          <div class="result-card-header">🔄 Reorder Analysis — {inv.get('sku','—')} · {inv.get('name','—')}</div>
           <div class="result-card-body">
             <div class="metric-row">
-              <div class="metric-pill"><span class="mp-label">Current Stock</span>12 units</div>
-              <div class="metric-pill"><span class="mp-label">Threshold</span>50 units</div>
-              <div class="metric-pill"><span class="mp-label">Vendor</span>ArcticSupply Co.</div>
-              <div class="metric-pill"><span class="mp-label">Lead Time</span>7 days</div>
-              <div class="metric-pill"><span class="mp-label">Weather</span>❄️ Heavy Snow</div>
+              <div class="metric-pill"><span class="mp-label">Stock</span>{qty} units</div>
+              <div class="metric-pill"><span class="mp-label">Threshold</span>{threshold} units</div>
+              <div class="metric-pill"><span class="mp-label">Status</span>{badge}</div>
+              <div class="metric-pill"><span class="mp-label">Region</span>{inv.get('region','—')}</div>
+              <div class="metric-pill"><span class="mp-label">Category</span>{inv.get('category','—')}</div>
+              <div class="metric-pill"><span class="mp-label">Unit Cost</span>${inv.get('unit_cost','—')}</div>
             </div>
+        """, unsafe_allow_html=True)
+
+        if isinstance(vendor, dict):
+            st.markdown(f"""
+            <div class="divider"></div>
+            <div style="margin-bottom:0.5rem;font-size:0.8rem;font-weight:600;color:#a5b4fc;">🏭 Vendor</div>
+            <div class="metric-row">
+              <div class="metric-pill"><span class="mp-label">Name</span>{vendor.get('name','—')}</div>
+              <div class="metric-pill"><span class="mp-label">Lead Time</span>{vendor.get('lead_time_days','—')} days</div>
+              <div class="metric-pill"><span class="mp-label">On-Time Rate</span>{vendor.get('on_time_delivery_rate','—')}%</div>
+              <div class="metric-pill"><span class="mp-label">Reliability</span>{vendor.get('reliability_rating','—')}</div>
+              <div class="metric-pill"><span class="mp-label">Min Order</span>{vendor.get('min_order_qty','—')} units</div>
+            </div>
+            """, unsafe_allow_html=True)
+
+        if isinstance(weather, dict) and "error" not in weather:
+            st.markdown(f"""
+            <div class="divider"></div>
+            <div style="margin-bottom:0.5rem;font-size:0.8rem;font-weight:600;color:#a5b4fc;">🌦️ Weather — {weather.get('city','—')}</div>
+            <div class="metric-row">
+              <div class="metric-pill"><span class="mp-label">Condition</span>{weather.get('condition','—')}</div>
+              <div class="metric-pill"><span class="mp-label">Temperature</span>{weather.get('temperature','—')}°C</div>
+              <div class="metric-pill"><span class="mp-label">Humidity</span>{weather.get('humidity','—')}%</div>
+            </div>
+            """, unsafe_allow_html=True)
+
+        if isinstance(decision, dict):
+            reorder_badge = '<span class="badge badge-crit">REORDER REQUIRED</span>' if decision.get("reorder") else '<span class="badge badge-ok">NO REORDER NEEDED</span>'
+            st.markdown(f"""
             <div class="divider"></div>
             <div style="margin-bottom:0.5rem;font-size:0.8rem;font-weight:600;color:#a5b4fc;">🤖 AI Decision</div>
             <div style="background:#0f1923;border:1px solid #1e3a5f;border-radius:8px;padding:0.75rem;font-size:0.82rem;color:#cbd5e1;line-height:1.7;">
-              <span class="badge badge-crit">REORDER REQUIRED</span>&nbsp;
-              Recommend ordering <strong>200 units</strong><br>
-              Stock (12) is 76% below threshold. Heavy snow in North region will spike
-              winter apparel demand. Vendor reliability: 97% on-time.
+              {reorder_badge}&nbsp;
+              Recommended Qty: <strong>{decision.get('recommended_qty','—')} units</strong><br>
+              {decision.get('reason','')}
             </div>
-            <div class="divider"></div>
-            <div style="margin-bottom:0.5rem;font-size:0.8rem;font-weight:600;color:#a5b4fc;">🎫 Purchase Ticket</div>
-            <div style="font-size:0.8rem;color:#94a3b8;display:flex;align-items:center;gap:10px;">
-              <span>TKT-2847</span>
-              <span class="badge badge-open">OPEN</span>
-              <span style="margin-left:auto;color:#475569;font-size:0.72rem;">Created just now</span>
-            </div>
-          </div>
-        </div>""", unsafe_allow_html=True)
+            """, unsafe_allow_html=True)
 
-    elif intent == "weather":
-        st.markdown("""
-        <div class="result-card">
-          <div class="result-card-header">🌦️ Weather & Inventory Impact — North Region</div>
-          <div class="result-card-body">
-            <div class="metric-row">
-              <div class="metric-pill"><span class="mp-label">Condition</span>❄️ Heavy Snow</div>
-              <div class="metric-pill"><span class="mp-label">Temperature</span>-8°C</div>
-              <div class="metric-pill"><span class="mp-label">Humidity</span>78%</div>
-              <div class="metric-pill"><span class="mp-label">Rainfall</span>0 mm</div>
-            </div>
-            <div class="divider"></div>
-            <div style="background:#0f1923;border:1px solid #1e3a5f;border-radius:8px;padding:0.75rem;font-size:0.82rem;color:#cbd5e1;line-height:1.7;">
-              <span class="badge badge-warn">⚠️ DEMAND SPIKE EXPECTED</span><br><br>
-              Heavy snow historically correlates with a <strong>35–50% increase</strong> in
-              demand for winter apparel, footwear, and thermal accessories in this region.
-            </div>
-          </div>
-        </div>""", unsafe_allow_html=True)
+        if isinstance(ticket, dict):
+            if ticket.get("created"):
+                st.markdown(f"""
+                <div class="divider"></div>
+                <div style="margin-bottom:0.5rem;font-size:0.8rem;font-weight:600;color:#a5b4fc;">🎫 Purchase Ticket Created</div>
+                <div style="font-size:0.8rem;color:#94a3b8;display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+                  <span>TKT-{ticket.get('ticket_id','—')}</span>
+                  <span class="badge badge-open">OPEN</span>
+                  <span>Qty: {ticket.get('recommended_qty','—')}</span>
+                  <span>Est. Cost: ${ticket.get('estimated_cost','—')}</span>
+                </div>
+                """, unsafe_allow_html=True)
+            else:
+                st.markdown(f"""
+                <div class="divider"></div>
+                <div style="font-size:0.8rem;color:#64748b;">🎫 No ticket created — {ticket.get('reason','')}</div>
+                """, unsafe_allow_html=True)
 
-    elif intent == "inventory_lookup":
-        st.markdown('<div class="result-card"><div class="result-card-header">📦 Inventory Search Results</div><div class="result-card-body">', unsafe_allow_html=True)
-        df = pd.DataFrame({
-            "SKU":         ["SKU-001", "SKU-034", "SKU-089"],
-            "Product":     ["Winter Jacket", "Windbreaker", "Rain Jacket"],
-            "Category":    ["Apparel", "Apparel", "Apparel"],
-            "Region":      ["North", "West", "East"],
-            "Qty":         [12, 145, 78],
-            "Unit Cost":   ["$89.99", "$54.50", "$67.00"],
-            "Health":      ["🔴 Critical", "🟢 Healthy", "🟢 Healthy"],
-        })
-        st.dataframe(df, use_container_width=True, hide_index=True)
         st.markdown("</div></div>", unsafe_allow_html=True)
 
-    elif intent == "category_lookup":
-        st.markdown('<div class="result-card"><div class="result-card-header">🏷️ Category Overview — Apparel</div><div class="result-card-body">', unsafe_allow_html=True)
-        df = pd.DataFrame({
-            "SKU":       ["SKU-001", "SKU-034", "SKU-056", "SKU-215"],
-            "Product":   ["Winter Jacket", "Windbreaker", "Polo Shirt", "Fleece Hoodie"],
-            "Region":    ["North", "West", "South", "West"],
-            "Qty":       [12, 145, 320, 20],
-            "Health":    ["🔴 Critical", "🟢 Healthy", "🟢 Healthy", "🟡 Low"],
-        })
-        st.dataframe(df, use_container_width=True, hide_index=True)
-        st.markdown("""
-        <div class="metric-row">
-          <div class="metric-pill"><span class="mp-label">Total SKUs</span>4</div>
-          <div class="metric-pill"><span class="mp-label">Healthy</span>2</div>
-          <div class="metric-pill"><span class="mp-label">At Risk</span>2</div>
-        </div>
-        </div></div>""", unsafe_allow_html=True)
+    # ── LOW STOCK ─────────────────────────────
+    elif intent == "low_stock" and isinstance(inv, list):
+        st.markdown('<div class="result-card"><div class="result-card-header">📉 Low Stock Report</div><div class="result-card-body">', unsafe_allow_html=True)
 
+        if inv:
+            rows = []
+            for p in inv:
+                rows.append({
+                    "SKU":       p.get("sku"),
+                    "Product":   p.get("name"),
+                    "Category":  p.get("category"),
+                    "Region":    p.get("region"),
+                    "Qty":       p.get("qty"),
+                    "Threshold": p.get("reorder_threshold"),
+                    "Status":    stock_badge(p.get("qty"), p.get("reorder_threshold")),
+                })
+            df = pd.DataFrame(rows)
+            st.dataframe(df, use_container_width=True, hide_index=True)
+
+            critical = sum(1 for p in inv if (p.get("qty") or 0) <= (p.get("reorder_threshold") or 0) * 0.5)
+            st.markdown(f"""
+            <div class="metric-row">
+              <div class="metric-pill"><span class="mp-label">Total Low Stock</span>{len(inv)} products</div>
+              <div class="metric-pill"><span class="mp-label">Critical (≤50% threshold)</span>{critical} products</div>
+            </div>""", unsafe_allow_html=True)
+        else:
+            st.markdown('<p style="color:#86efac;font-size:0.85rem;">✅ All products are above reorder threshold.</p>', unsafe_allow_html=True)
+
+        st.markdown("</div></div>", unsafe_allow_html=True)
+
+    # ── INVENTORY LOOKUP ──────────────────────
+    elif intent == "inventory_lookup" and isinstance(inv, list):
+        st.markdown('<div class="result-card"><div class="result-card-header">📦 Inventory Search Results</div><div class="result-card-body">', unsafe_allow_html=True)
+
+        if inv:
+            rows = [{
+                "SKU":       p.get("sku"),
+                "Product":   p.get("name"),
+                "Category":  p.get("category"),
+                "Region":    p.get("region"),
+                "Qty":       p.get("qty"),
+                "Threshold": p.get("reorder_threshold"),
+                "Unit Cost": f"${p.get('unit_cost',0):.2f}",
+                "Health":    stock_badge(p.get("qty"), p.get("reorder_threshold")),
+            } for p in inv]
+            st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
+        else:
+            st.markdown('<p style="color:#94a3b8;font-size:0.85rem;">No products found matching your search.</p>', unsafe_allow_html=True)
+
+        st.markdown("</div></div>", unsafe_allow_html=True)
+
+    # ── CATEGORY LOOKUP ───────────────────────
+    elif intent == "category_lookup" and isinstance(inv, list):
+        category = inv[0].get("category", "Category") if inv else "Category"
+        st.markdown(f'<div class="result-card"><div class="result-card-header">🏷️ Category — {category}</div><div class="result-card-body">', unsafe_allow_html=True)
+
+        if inv:
+            rows = [{
+                "SKU":       p.get("sku"),
+                "Product":   p.get("name"),
+                "Region":    p.get("region"),
+                "Qty":       p.get("qty"),
+                "Threshold": p.get("reorder_threshold"),
+                "Unit Cost": f"${p.get('unit_cost',0):.2f}",
+                "Health":    stock_badge(p.get("qty"), p.get("reorder_threshold")),
+            } for p in inv]
+            df = pd.DataFrame(rows)
+            st.dataframe(df, use_container_width=True, hide_index=True)
+
+            healthy  = sum(1 for p in inv if (p.get("qty") or 0) > (p.get("reorder_threshold") or 0))
+            at_risk  = len(inv) - healthy
+            st.markdown(f"""
+            <div class="metric-row">
+              <div class="metric-pill"><span class="mp-label">Total SKUs</span>{len(inv)}</div>
+              <div class="metric-pill"><span class="mp-label">Healthy</span>{healthy}</div>
+              <div class="metric-pill"><span class="mp-label">At Risk</span>{at_risk}</div>
+            </div>""", unsafe_allow_html=True)
+        else:
+            st.markdown('<p style="color:#94a3b8;font-size:0.85rem;">No products found in this category.</p>', unsafe_allow_html=True)
+
+        st.markdown("</div></div>", unsafe_allow_html=True)
+
+    # ── WEATHER + REGIONAL INVENTORY ──────────
+    elif intent == "weather_inventory":
+        if isinstance(weather, dict) and "error" not in weather:
+            st.markdown(f"""
+            <div class="result-card">
+              <div class="result-card-header">🌦️ Weather & Inventory — {weather.get('region','')}</div>
+              <div class="result-card-body">
+                <div class="metric-row">
+                  <div class="metric-pill"><span class="mp-label">City</span>{weather.get('city','—')}</div>
+                  <div class="metric-pill"><span class="mp-label">Condition</span>{weather.get('condition','—')}</div>
+                  <div class="metric-pill"><span class="mp-label">Temperature</span>{weather.get('temperature','—')}°C</div>
+                  <div class="metric-pill"><span class="mp-label">Humidity</span>{weather.get('humidity','—')}%</div>
+                </div>
+            """, unsafe_allow_html=True)
+        else:
+            st.markdown('<div class="result-card"><div class="result-card-header">🌦️ Regional Inventory</div><div class="result-card-body">', unsafe_allow_html=True)
+
+        if isinstance(inv, list) and inv:
+            st.markdown('<div class="divider"></div>', unsafe_allow_html=True)
+            rows = [{
+                "SKU":     p.get("sku"),
+                "Product": p.get("name"),
+                "Qty":     p.get("qty"),
+                "Health":  stock_badge(p.get("qty"), p.get("reorder_threshold")),
+            } for p in inv]
+            st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
+
+        st.markdown("</div></div>", unsafe_allow_html=True)
+
+    # ── FALLBACK — show report text ───────────
     else:
-        st.markdown("""
-        <div class="result-card">
-          <div class="result-card-header">💬 Inventra AI</div>
-          <div class="result-card-body" style="color:#94a3b8;font-size:0.85rem;line-height:1.7;">
-            I can help with inventory queries, reorder decisions, low stock alerts,
-            category lookups, and weather-based demand forecasting.<br><br>
-            Try: <em>"Show me low stock products"</em> or <em>"Reorder SKU-001"</em>
-          </div>
-        </div>""", unsafe_allow_html=True)
+        if report:
+            st.markdown(f"""
+            <div class="result-card">
+              <div class="result-card-header">💬 Inventra AI</div>
+              <div class="result-card-body" style="color:#cbd5e1;font-size:0.85rem;line-height:1.75;">
+                {report.replace(chr(10), '<br>')}
+              </div>
+            </div>""", unsafe_allow_html=True)
+        else:
+            st.markdown("""
+            <div class="result-card">
+              <div class="result-card-header">💬 Inventra AI</div>
+              <div class="result-card-body" style="color:#94a3b8;font-size:0.85rem;line-height:1.7;">
+                I can help with inventory queries, reorder decisions, low stock alerts,
+                category lookups, and weather-based demand forecasting.<br><br>
+                Try: <em>"Show me low stock products"</em> or <em>"Reorder SKU-001"</em>
+              </div>
+            </div>""", unsafe_allow_html=True)
 
 
 # ─────────────────────────────────────────────
@@ -474,7 +650,7 @@ with st.sidebar:
 active = get_active()
 
 if active is None:
-    # ── Welcome screen ──
+    # ── Welcome / landing screen ──
     st.markdown("""
     <div class="welcome-wrap">
       <div class="welcome-icon">📦</div>
@@ -485,11 +661,11 @@ if active is None:
       </div>
       <div class="example-grid">
         <div class="example-chip">📉 Show me low stock products</div>
-        <div class="example-chip">🔄 Reorder SKU-001 Winter Jacket</div>
-        <div class="example-chip">📦 Search inventory for jackets</div>
+        <div class="example-chip">🔄 Reorder SKU-001</div>
+        <div class="example-chip">📦 Search inventory for mixer</div>
         <div class="example-chip">🌦️ Weather impact on North region</div>
         <div class="example-chip">🏷️ Show all Apparel category items</div>
-        <div class="example-chip">📊 Generate inventory report</div>
+        <div class="example-chip">📊 Show me all Electronics</div>
       </div>
     </div>
     """, unsafe_allow_html=True)
@@ -498,17 +674,20 @@ if active is None:
     if prompt:
         sid = create_session(title=prompt[:42] + ("…" if len(prompt) > 42 else ""))
         active = st.session_state.sessions[sid]
-        active["messages"].append({"role": "user",  "content": prompt, "ts": now_ts()})
+        active["messages"].append({"role": "user", "content": prompt, "ts": now_ts()})
+
+        result_state = run_graph_with_steps(prompt)
+
         active["messages"].append({
-            "role": "ai", "content": "__result__",
-            "intent": detect_intent(prompt), "query": prompt, "ts": now_ts(),
+            "role":  "ai",
+            "state": result_state,
+            "ts":    now_ts(),
         })
         st.rerun()
 
 else:
-    # ── Active chat ──
+    # ── Active chat session ──
     n_exchanges = len(active["messages"]) // 2
-
     st.markdown(f"""
     <div class="chat-header">
       <div class="chat-title">💬 {active['title']}</div>
@@ -539,15 +718,7 @@ else:
                 <div class="msg-bubble ai">Here's what I found:</div>
             """, unsafe_allow_html=True)
 
-            if msg.get("content") == "__result__":
-                render_result(msg.get("intent", "general"), msg.get("query", ""))
-            else:
-                st.markdown(f"""
-                <div class="result-card">
-                  <div class="result-card-body" style="color:#cbd5e1;font-size:0.85rem;">
-                    {msg['content']}
-                  </div>
-                </div>""", unsafe_allow_html=True)
+            render_real_result(msg.get("state", {}))
 
             st.markdown(f"""
                 <div class="msg-ts">{msg['ts']}</div>
@@ -555,12 +726,16 @@ else:
             </div>
             """, unsafe_allow_html=True)
 
-    # Input
+    # ── Input ──
     prompt = st.chat_input("Ask Inventra anything about your inventory…")
     if prompt:
-        active["messages"].append({"role": "user",  "content": prompt, "ts": now_ts()})
+        active["messages"].append({"role": "user", "content": prompt, "ts": now_ts()})
+
+        result_state = run_graph_with_steps(prompt)
+
         active["messages"].append({
-            "role": "ai", "content": "__result__",
-            "intent": detect_intent(prompt), "query": prompt, "ts": now_ts(),
+            "role":  "ai",
+            "state": result_state,
+            "ts":    now_ts(),
         })
         st.rerun()
