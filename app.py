@@ -26,54 +26,16 @@ def get_graph():
     return build_graph()
 
 
-# Agent step labels shown during streaming
-AGENT_STEPS = {
-    "data":     ("📊", "Data Agent",     "Extracting intent & fetching inventory, vendor, weather data"),
-    "decision": ("🧠", "Decision Agent",  "Analysing stock levels, vendor reliability & weather impact"),
-    "ticket":   ("🎫", "Ticket Agent",    "Creating purchase ticket in the system"),
-    "report":   ("📝", "Report Agent",    "Generating final structured report"),
-}
-
-
-def run_graph_with_steps(prompt: str) -> dict:
-    """Stream the graph, rendering each agent step live inside an st.status box."""
+def run_pipeline(prompt: str) -> dict:
+    """Executes the multi-agent graph pipeline and returns final AgentState."""
     graph = get_graph()
-    result_state: dict = {}
-
-    with st.status("🤖 Running agents…", expanded=True) as status:
+    with st.spinner("🤖 Analyzing inventory & processing request..."):
         try:
-            for event in graph.stream({"user_query": prompt}):
-                for node_name, node_output in event.items():
-                    if node_name in AGENT_STEPS:
-                        icon, label, desc = AGENT_STEPS[node_name]
-                        st.markdown(
-                            f"""
-                            <div style="display:flex;align-items:flex-start;gap:10px;
-                                        padding:0.5rem 0.6rem;border-radius:8px;
-                                        background:#1a2234;border:1px solid #1e2d45;
-                                        margin-bottom:6px;">
-                              <span style="font-size:1rem;">{icon}</span>
-                              <div>
-                                <div style="font-size:0.82rem;font-weight:600;color:#a5b4fc;">
-                                  {label} <span style="color:#86efac;font-size:0.75rem;">✓ done</span>
-                                </div>
-                                <div style="font-size:0.73rem;color:#64748b;margin-top:1px;">{desc}</div>
-                              </div>
-                            </div>
-                            """,
-                            unsafe_allow_html=True,
-                        )
-                    if isinstance(node_output, dict):
-                        result_state.update(node_output)
-
-            status.update(label="✅ All agents completed", state="complete", expanded=False)
-
+            return graph.invoke({"user_query": prompt})
         except Exception as e:
-            traceback.print_exc()   # full stack trace → Streamlit server log
-            status.update(label="❌ Agent error", state="error", expanded=True)
-            result_state = {"intent": "error", "report": f"⚠️ {e}"}
+            traceback.print_exc()
+            return {"intent": "error", "report": f"⚠️ {e}"}
 
-    return result_state
 
 
 # ─────────────────────────────────────────────
@@ -678,7 +640,7 @@ if active is None:
         active = st.session_state.sessions[sid]
         active["messages"].append({"role": "user", "content": prompt, "ts": now_ts()})
 
-        result_state = run_graph_with_steps(prompt)
+        result_state = run_pipeline(prompt)
 
         active["messages"].append({
             "role":  "ai",
@@ -733,7 +695,7 @@ else:
     if prompt:
         active["messages"].append({"role": "user", "content": prompt, "ts": now_ts()})
 
-        result_state = run_graph_with_steps(prompt)
+        result_state = run_pipeline(prompt)
 
         active["messages"].append({
             "role":  "ai",

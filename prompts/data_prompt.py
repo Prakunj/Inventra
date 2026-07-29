@@ -24,7 +24,20 @@ Valid intents:
 - category_lookup
 - region_lookup
 
+RULES FOR INTENT:
+- 'reorder': Use whenever the user asks to reorder, check if reorder is needed, decide on stock replenishment, or evaluate purchasing for a product/SKU — EVEN IF weather, rain, temperature, or vendor lead time is mentioned in the query.
+- 'weather_inventory': Use ONLY for general weather status queries for a region without a specific product reorder decision.
+
 Examples:
+
+User:
+Heavy rain and humidity are forecasted for the North region. Check stock for Instant Water Heater (SKU029) and decide if we need an urgent reorder considering vendor lead time
+
+Output:
+{
+"intent":"reorder",
+"entity":"SKU029"
+}
 
 User:
 Should I reorder SKU001?
