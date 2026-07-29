@@ -16,21 +16,36 @@ llm = ChatGoogleGenerativeAI(
 structured_llm = llm.with_structured_output(QueryExtraction)
 
 
+from utils.logger import log_llm_request, log_llm_response
+
+
 def data_agent(state: AgentState):
 
     query = state["user_query"]
+    history = state.get("chat_history") or []
 
-    extraction = structured_llm.invoke(
-        DATA_PROMPT + "\n\nUser Query:\n" + query
-    )
+    history_text = ""
+    if history:
+        turns = []
+        for m in history[-6:]:  # Last 6 messages
+            role = "USER" if m.get("role") == "user" else "ASSISTANT"
+            content = m.get("content") or (m.get("state", {}).get("report", "")[:150] if isinstance(m.get("state"), dict) else "")
+            if content:
+                turns.append(f"{role}: {content}")
+        if turns:
+            history_text = "\n\nRecent Conversation History:\n" + "\n".join(turns)
+
+    full_prompt = DATA_PROMPT + history_text + "\n\nUser Query:\n" + query
+
+    log_llm_request("Data Agent", full_prompt)
+    extraction = structured_llm.invoke(full_prompt)
+
 
     intent = extraction.intent
     entity = extraction.entity
 
-    print("=" * 50)
-    print("Intent:", intent)
-    print("Entity:", entity)
-    print("=" * 50)
+    log_llm_response("Data Agent", f"Intent: {intent} | Entity: {entity}")
+
 
     inventory = None
     vendor    = None
@@ -82,10 +97,17 @@ def data_agent(state: AgentState):
     # -----------------------------
 
     elif intent in ["region_lookup", "region"]:
-        clean_region = entity.lower().replace("region", "").strip().title() if entity else "North"
-        if clean_region not in ["North", "South", "East", "West"]:
-            clean_region = "North"
-        inventory = InventoryService.get_inventory_by_region(clean_region)
+        requested_region = None
+        for r in ["North", "South", "East", "West"]:
+            if r.lower() in (entity or "").lower() or r.lower() in query.lower():
+                requested_region = r
+                break
+
+        if requested_region:
+            inventory = InventoryService.get_inventory_by_region(requested_region)
+        else:
+            inventory = InventoryService.get_products_sorted_by_region()
+
 
     # -----------------------------
     # WEATHER + REGION

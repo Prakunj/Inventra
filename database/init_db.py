@@ -84,8 +84,30 @@ def create_tables():
     );
     """)
 
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS chat_sessions (
+        session_id TEXT PRIMARY KEY,
+        title TEXT NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+    """)
+
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS chat_messages (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        session_id TEXT NOT NULL,
+        role TEXT NOT NULL,
+        content TEXT,
+        state_json TEXT,
+        timestamp TEXT,
+        FOREIGN KEY(session_id) REFERENCES chat_sessions(session_id) ON DELETE CASCADE
+    );
+    """)
+
     conn.commit()
     conn.close()
+
 
 
 def table_has_data(table_name: str) -> bool:

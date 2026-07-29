@@ -5,6 +5,8 @@ class AgentState(TypedDict, total=False):
 
     user_query: str
 
+    chat_history: list
+
     intent: str
 
     entity: str

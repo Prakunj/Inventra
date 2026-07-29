@@ -3,6 +3,7 @@ from services.vendor_service import VendorService
 from services.ticket_service import TicketService
 from services.weather_service import WeatherService
 from services.sales_service import SalesService
+from services.chat_service import ChatService
 
 __all__ = [
     "InventoryService",
@@ -10,4 +11,6 @@ __all__ = [
     "TicketService",
     "WeatherService",
     "SalesService",
+    "ChatService",
 ]
+

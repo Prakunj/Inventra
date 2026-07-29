@@ -32,6 +32,12 @@ class InventoryService:
         return InventoryService.get_products_by_region(region)
 
     @staticmethod
+    def get_products_sorted_by_region() -> list[dict]:
+        """Fetch all products sorted by region and sku."""
+        return DBService.query("SELECT * FROM inventory ORDER BY region ASC, sku ASC")
+
+
+    @staticmethod
     def get_inventory_by_name(name: str) -> dict | None:
         """Fetch inventory item by product name."""
         return DBService.query_one("SELECT * FROM inventory WHERE LOWER(name) = LOWER(?)", (name,))

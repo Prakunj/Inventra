@@ -18,6 +18,9 @@ llm = ChatGoogleGenerativeAI(
 structured_llm = llm.with_structured_output(Decision)
 
 
+from utils.logger import log_llm_request, log_llm_response
+
+
 def decision_agent(state: AgentState):
 
     # Only reorder requests require a decision
@@ -61,7 +64,9 @@ Return:
 Return JSON only.
 """
 
+    log_llm_request("Decision Agent", prompt)
     decision = structured_llm.invoke(prompt)
+    log_llm_response("Decision Agent", decision.model_dump())
 
     return {
         **state,

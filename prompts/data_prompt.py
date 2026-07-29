@@ -28,6 +28,10 @@ RULES FOR INTENT:
 - 'reorder': Use whenever the user asks to reorder, check if reorder is needed, decide on stock replenishment, or evaluate purchasing for a product/SKU — EVEN IF weather, rain, temperature, or vendor lead time is mentioned in the query.
 - 'weather_inventory': Use ONLY for general weather status queries for a region without a specific product reorder decision.
 
+RULES FOR CONVERSATION HISTORY & PRONOUN RESOLUTION:
+- If the user uses pronouns or references like 'it', 'that item', 'this product', 'reorder it', or 'who supplies it', look at the Recent Conversation History to find the specific SKU or Product Name being discussed and extract it as the 'entity'.
+
+
 Examples:
 
 User:

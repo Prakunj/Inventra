@@ -1,6 +1,8 @@
 from langchain_google_genai import ChatGoogleGenerativeAI
 
 from graph.state import AgentState
+from utils.logger import log_llm_request, log_llm_response
+
 
 
 llm = ChatGoogleGenerativeAI(
@@ -133,8 +135,11 @@ Summarize the following information.
 {state}
 """
 
+    log_llm_request("Report Agent", prompt)
     report = llm.invoke(prompt)
     report_text = report.content if isinstance(report.content, str) else "\n".join([c.get("text", "") for c in report.content if isinstance(c, dict) and "text" in c])
+    log_llm_response("Report Agent", report_text[:300] + ("..." if len(report_text) > 300 else ""))
+
 
     return {
         **state,

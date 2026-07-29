@@ -26,15 +26,19 @@ def get_graph():
     return build_graph()
 
 
-def run_pipeline(prompt: str) -> dict:
+def run_pipeline(prompt: str, chat_history: list = None) -> dict:
     """Executes the multi-agent graph pipeline and returns final AgentState."""
     graph = get_graph()
     with st.spinner("🤖 Analyzing inventory & processing request..."):
         try:
-            return graph.invoke({"user_query": prompt})
+            return graph.invoke({
+                "user_query": prompt,
+                "chat_history": chat_history or []
+            })
         except Exception as e:
             traceback.print_exc()
             return {"intent": "error", "report": f"⚠️ {e}"}
+
 
 
 
@@ -273,11 +277,34 @@ html, body, [class*="css"] { font-family: 'Inter', sans-serif; }
 """, unsafe_allow_html=True)
 
 
+from services.chat_service import ChatService
+
+
 # ─────────────────────────────────────────────
-# Session state init
+# Session state init & persistence
 # ─────────────────────────────────────────────
+def load_db_sessions():
+    """Load session metadata from SQLite database."""
+    db_sessions = ChatService.get_all_sessions()
+    sessions = {}
+    for s in db_sessions:
+        sid = s["session_id"]
+        try:
+            created_dt = datetime.strptime(s["created_at"], "%Y-%m-%d %H:%M:%S")
+        except Exception:
+            created_dt = datetime.now()
+
+        sessions[sid] = {
+            "title":         s["title"],
+            "created_at":    created_dt,
+            "message_count": s.get("message_count", 0),
+            "messages":      None,  # Loaded on demand
+        }
+    return sessions
+
+
 if "sessions" not in st.session_state:
-    st.session_state.sessions = {}
+    st.session_state.sessions = load_db_sessions()
 
 if "active_session" not in st.session_state:
     st.session_state.active_session = None
@@ -288,10 +315,12 @@ if "active_session" not in st.session_state:
 # ─────────────────────────────────────────────
 def create_session(title="New Chat"):
     sid = f"s_{int(time.time() * 1000)}"
+    ChatService.create_session(sid, title)
     st.session_state.sessions[sid] = {
-        "title":      title,
-        "messages":   [],
-        "created_at": datetime.now(),
+        "title":         title,
+        "created_at":    datetime.now(),
+        "message_count": 0,
+        "messages":      [],
     }
     st.session_state.active_session = sid
     return sid
@@ -300,8 +329,21 @@ def create_session(title="New Chat"):
 def get_active():
     sid = st.session_state.active_session
     if sid and sid in st.session_state.sessions:
-        return st.session_state.sessions[sid]
+        sess = st.session_state.sessions[sid]
+        if sess["messages"] is None:
+            sess["messages"] = ChatService.get_session_messages(sid)
+        return sess
     return None
+
+
+def delete_session(sid: str):
+    """Delete session from database and local state."""
+    ChatService.delete_session(sid)
+    if sid in st.session_state.sessions:
+        del st.session_state.sessions[sid]
+    if st.session_state.active_session == sid:
+        st.session_state.active_session = None
+
 
 
 def now_ts():
@@ -448,8 +490,11 @@ def render_real_result(state: dict):
 
     # ── INVENTORY / REGION LOOKUP ────────────
     elif intent in ["inventory_lookup", "region_lookup"] and isinstance(inv, list):
-        header_title = f"📍 Region Inventory — {state.get('entity','Region')}" if intent == "region_lookup" else "📦 Inventory Search Results"
+        reg_entity = state.get("entity")
+        reg_label = reg_entity.title() if reg_entity else "All Regions"
+        header_title = f"📍 Region Inventory — {reg_label}" if intent == "region_lookup" else "📦 Inventory Search Results"
         st.markdown(f'<div class="result-card"><div class="result-card-header">{header_title}</div><div class="result-card-body">', unsafe_allow_html=True)
+
 
 
         if inv:
@@ -554,6 +599,9 @@ def render_real_result(state: dict):
 # ─────────────────────────────────────────────
 # SIDEBAR
 # ─────────────────────────────────────────────
+# ─────────────────────────────────────────────
+# SIDEBAR
+# ─────────────────────────────────────────────
 with st.sidebar:
     st.markdown("""
     <div class="sb-brand">
@@ -578,21 +626,27 @@ with st.sidebar:
         for sid, sess in sorted_sessions:
             is_active = sid == st.session_state.active_session
             card_cls  = "session-card active" if is_active else "session-card"
-            n_msgs    = len(sess["messages"])
+            n_msgs    = sess.get("message_count", len(sess.get("messages") or []))
 
-            st.markdown(f"""
-            <div class="{card_cls}">
-              <div class="session-title">{sess['title']}</div>
-              <div class="session-meta">
-                {relative_time(sess['created_at'])} &nbsp;·&nbsp;
-                {n_msgs} msg{"s" if n_msgs != 1 else ""}
-              </div>
-            </div>
-            """, unsafe_allow_html=True)
+            col1, col2 = st.columns([0.8, 0.2])
+            with col1:
+                st.markdown(f"""
+                <div class="{card_cls}">
+                  <div class="session-title">{sess['title']}</div>
+                  <div class="session-meta">
+                    {relative_time(sess['created_at'])} &nbsp;·&nbsp;
+                    {n_msgs} msg{"s" if n_msgs != 1 else ""}
+                  </div>
+                </div>
+                """, unsafe_allow_html=True)
+                if st.button("open", key=f"btn_{sid}", help=f"Open: {sess['title']}"):
+                    st.session_state.active_session = sid
+                    st.rerun()
 
-            if st.button("open", key=f"btn_{sid}", help=f"Open: {sess['title']}"):
-                st.session_state.active_session = sid
-                st.rerun()
+            with col2:
+                if st.button("🗑️", key=f"del_{sid}", help="Delete chat"):
+                    delete_session(sid)
+                    st.rerun()
     else:
         st.markdown("""
         <div style="text-align:center;color:#475569;font-size:0.78rem;padding:2rem 1rem;">
@@ -612,6 +666,40 @@ with st.sidebar:
 # MAIN AREA
 # ─────────────────────────────────────────────
 active = get_active()
+
+def process_and_save_turn(sid: str, prompt: str):
+    """Process user prompt, run agent graph pipeline, and persist turn in DB."""
+    active_sess = get_active()
+    u_ts = now_ts()
+
+    # 1. Store user message in local state & DB
+    if active_sess["messages"] is None:
+        active_sess["messages"] = []
+
+    active_sess["messages"].append({"role": "user", "content": prompt, "ts": u_ts})
+    ChatService.add_message(sid, role="user", content=prompt, ts=u_ts)
+
+    # 2. Update session title if default/first turn
+    if len(active_sess["messages"]) == 1 or active_sess["title"] == "New Chat":
+        new_title = prompt[:42] + ("…" if len(prompt) > 42 else "")
+        active_sess["title"] = new_title
+        ChatService.update_session_title(sid, new_title)
+
+    # 3. Run pipeline with past conversation history for multi-turn memory
+    prior_history = active_sess["messages"][:-1] if active_sess["messages"] else []
+    result_state = run_pipeline(prompt, chat_history=prior_history)
+
+
+    # 4. Store AI response in local state & DB
+    a_ts = now_ts()
+    active_sess["messages"].append({
+        "role":  "ai",
+        "state": result_state,
+        "ts":    a_ts,
+    })
+    ChatService.add_message(sid, role="ai", state=result_state, ts=a_ts)
+    active_sess["message_count"] = len(active_sess["messages"])
+
 
 if active is None:
     # ── Welcome / landing screen ──
@@ -637,16 +725,7 @@ if active is None:
     prompt = st.chat_input("Ask Inventra anything about your inventory…")
     if prompt:
         sid = create_session(title=prompt[:42] + ("…" if len(prompt) > 42 else ""))
-        active = st.session_state.sessions[sid]
-        active["messages"].append({"role": "user", "content": prompt, "ts": now_ts()})
-
-        result_state = run_pipeline(prompt)
-
-        active["messages"].append({
-            "role":  "ai",
-            "state": result_state,
-            "ts":    now_ts(),
-        })
+        process_and_save_turn(sid, prompt)
         st.rerun()
 
 else:
@@ -693,13 +772,7 @@ else:
     # ── Input ──
     prompt = st.chat_input("Ask Inventra anything about your inventory…")
     if prompt:
-        active["messages"].append({"role": "user", "content": prompt, "ts": now_ts()})
-
-        result_state = run_pipeline(prompt)
-
-        active["messages"].append({
-            "role":  "ai",
-            "state": result_state,
-            "ts":    now_ts(),
-        })
+        sid = st.session_state.active_session
+        process_and_save_turn(sid, prompt)
         st.rerun()
+
