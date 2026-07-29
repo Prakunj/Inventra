@@ -22,6 +22,7 @@ Valid intents:
 - weather_inventory
 - low_stock
 - category_lookup
+- region_lookup
 
 Examples:
 
@@ -32,6 +33,15 @@ Output:
 {
 "intent":"reorder",
 "entity":"SKU001"
+}
+
+User:
+based on north region, give product details
+
+Output:
+{
+"intent":"region_lookup",
+"entity":"North"
 }
 
 User:

@@ -484,9 +484,11 @@ def render_real_result(state: dict):
 
         st.markdown("</div></div>", unsafe_allow_html=True)
 
-    # ── INVENTORY LOOKUP ──────────────────────
-    elif intent == "inventory_lookup" and isinstance(inv, list):
-        st.markdown('<div class="result-card"><div class="result-card-header">📦 Inventory Search Results</div><div class="result-card-body">', unsafe_allow_html=True)
+    # ── INVENTORY / REGION LOOKUP ────────────
+    elif intent in ["inventory_lookup", "region_lookup"] and isinstance(inv, list):
+        header_title = f"📍 Region Inventory — {state.get('entity','Region')}" if intent == "region_lookup" else "📦 Inventory Search Results"
+        st.markdown(f'<div class="result-card"><div class="result-card-header">{header_title}</div><div class="result-card-body">', unsafe_allow_html=True)
+
 
         if inv:
             rows = [{

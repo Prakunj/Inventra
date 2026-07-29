@@ -38,15 +38,30 @@ class InventoryService:
 
     @staticmethod
     def search_inventory(keyword: str) -> list[dict]:
-        """Search inventory by keyword across name, category, or region."""
-        pattern = f"%{keyword}%"
+        """Search inventory by keyword across name, category, or region with automatic query cleaning."""
+        if not keyword:
+            return InventoryService.get_all_products()
+
+        clean_kw = keyword.lower()
+        for filler in ["region", "zone", "area", "category", "products", "items"]:
+            clean_kw = clean_kw.replace(filler, "")
+        clean_kw = clean_kw.strip()
+
+        pattern_raw = f"%{keyword.strip()}%"
+        pattern_clean = f"%{clean_kw}%" if clean_kw else pattern_raw
+
         sql = """
             SELECT * FROM inventory
             WHERE LOWER(name) LIKE LOWER(?)
                OR LOWER(category) LIKE LOWER(?)
                OR LOWER(region) LIKE LOWER(?)
+               OR LOWER(name) LIKE LOWER(?)
+               OR LOWER(category) LIKE LOWER(?)
+               OR LOWER(region) LIKE LOWER(?)
+            ORDER BY sku
         """
-        return DBService.query(sql, (pattern, pattern, pattern))
+        return DBService.query(sql, (pattern_raw, pattern_raw, pattern_raw, pattern_clean, pattern_clean, pattern_clean))
+
 
     @staticmethod
     def get_inventory_by_category(category: str) -> list[dict]:

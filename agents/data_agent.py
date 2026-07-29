@@ -78,12 +78,23 @@ def data_agent(state: AgentState):
         inventory = InventoryService.get_inventory_by_category(entity)
 
     # -----------------------------
+    # REGION LOOKUP
+    # -----------------------------
+
+    elif intent in ["region_lookup", "region"]:
+        clean_region = entity.lower().replace("region", "").strip().title() if entity else "North"
+        if clean_region not in ["North", "South", "East", "West"]:
+            clean_region = "North"
+        inventory = InventoryService.get_inventory_by_region(clean_region)
+
+    # -----------------------------
     # WEATHER + REGION
     # -----------------------------
 
     elif intent == "weather_inventory":
         weather   = WeatherService.get_weather("North")
         inventory = InventoryService.get_inventory_by_region("North")
+
 
     return {
         **state,
