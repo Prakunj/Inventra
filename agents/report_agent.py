@@ -134,8 +134,9 @@ Summarize the following information.
 """
 
     report = llm.invoke(prompt)
+    report_text = report.content if isinstance(report.content, str) else "\n".join([c.get("text", "") for c in report.content if isinstance(c, dict) and "text" in c])
 
     return {
         **state,
-        "report": report.content,
+        "report": report_text,
     }

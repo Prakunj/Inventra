@@ -1,8 +1,9 @@
-from database.db import get_connection
+import pandas as pd
+from database.db import DBService
 
 
 class TicketService:
-    """Service responsible for managing reorder tickets."""
+    """Service responsible for managing reorder tickets and ticket analytics."""
 
     @staticmethod
     def create_ticket(
@@ -11,83 +12,32 @@ class TicketService:
         recommended_qty: int,
         estimated_cost: float,
         reason: str,
-    ):
-        """
-        Create a new reorder ticket.
-        """
-
-        conn = get_connection()
-        cursor = conn.cursor()
-
-        cursor.execute("""
+    ) -> int:
+        """Create a new purchase recommendation ticket and return ticket_id."""
+        sku_clean = sku.upper().replace("-", "").strip()
+        sql = """
             INSERT INTO tickets (
-                sku,
-                vendor_id,
-                recommended_qty,
-                estimated_cost,
-                reason
-            )
-            VALUES (?, ?, ?, ?, ?)
-        """, (
-            sku,
-            vendor_id,
-            recommended_qty,
-            estimated_cost,
-            reason,
-        ))
-
-        conn.commit()
-
-        ticket_id = cursor.lastrowid
-
-        conn.close()
-
-        return ticket_id
+                sku, vendor_id, recommended_qty, estimated_cost, reason
+            ) VALUES (?, ?, ?, ?, ?)
+        """
+        return DBService.execute(sql, (sku_clean, vendor_id, recommended_qty, estimated_cost, reason))
 
     @staticmethod
-    def get_all_tickets():
-        conn = get_connection()
-        cursor = conn.cursor()
-
-        cursor.execute("""
-            SELECT *
-            FROM tickets
-            ORDER BY created_at DESC
-        """)
-
-        tickets = [dict(row) for row in cursor.fetchall()]
-
-        conn.close()
-
-        return tickets
+    def get_all_tickets() -> list[dict]:
+        """Fetch all tickets ordered by created_at DESC."""
+        return DBService.query("SELECT * FROM tickets ORDER BY created_at DESC")
 
     @staticmethod
-    def get_ticket(ticket_id: int):
-        conn = get_connection()
-        cursor = conn.cursor()
+    def get_tickets_df() -> pd.DataFrame:
+        """Fetch all tickets as a Pandas DataFrame."""
+        return DBService.query_df("SELECT * FROM tickets ORDER BY created_at DESC")
 
-        cursor.execute("""
-            SELECT *
-            FROM tickets
-            WHERE ticket_id = ?
-        """, (ticket_id,))
-
-        ticket = cursor.fetchone()
-
-        conn.close()
-
-        return dict(ticket) if ticket else None
+    @staticmethod
+    def get_ticket(ticket_id: int) -> dict | None:
+        """Fetch a specific ticket by ID."""
+        return DBService.query_one("SELECT * FROM tickets WHERE ticket_id = ?", (ticket_id,))
 
     @staticmethod
     def update_status(ticket_id: int, status: str):
-        conn = get_connection()
-        cursor = conn.cursor()
-
-        cursor.execute("""
-            UPDATE tickets
-            SET status = ?
-            WHERE ticket_id = ?
-        """, (status, ticket_id))
-
-        conn.commit()
-        conn.close()
+        """Update ticket status (e.g. OPEN, APPROVED, CLOSED)."""
+        DBService.execute("UPDATE tickets SET status = ? WHERE ticket_id = ?", (status, ticket_id))
